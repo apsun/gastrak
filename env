@@ -1,0 +1,4 @@
+# Set these according to where you want the data centered around.
+# Below example data is for Mountain View, CA
+LATITUDE=37.3861
+LONGITUDE=-122.0839
