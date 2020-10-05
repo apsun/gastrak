@@ -2,3 +2,4 @@
 # Below example data is for Mountain View, CA
 LATITUDE=37.3861
 LONGITUDE=-122.0839
+SERVER_PORT=8086
