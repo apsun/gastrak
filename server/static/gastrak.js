@@ -14,7 +14,7 @@ function getNavigationUrl(lat, long) {
     if (/Android/.test(navigator.userAgent)) {
         return `google.navigation:q=${lat},${long}`;
     } else if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        return `http://maps.apple.com/?daddr=${lat},${long}&dirflg=d`;
+        return `https://maps.apple.com/?daddr=${lat},${long}&dirflg=d`;
     } else {
         return `https://www.google.com/maps/?q=@${lat},${long}`;
     }
