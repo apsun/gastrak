@@ -1,5 +1,5 @@
 # Set these according to where you want the data centered around.
-# Below example data is for Mountain View, CA
-LATITUDE=37.3861
-LONGITUDE=-122.0839
+# Below example data is for Bay Area, CA
+LATITUDE=37.50
+LONGITUDE=-122.04
 SERVER_PORT=8086

@@ -2,7 +2,7 @@ let map = L.map("map", {
     zoomSnap: 0,
     zoomAnimation: false,
     center: L.latLng(gastrakLat, gastrakLong),
-    zoom: 12,
+    zoom: 11,
 });
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
