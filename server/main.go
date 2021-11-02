@@ -37,6 +37,7 @@ var portFlag = flag.Int("port", 8000, "port to listen on")
 var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
 var longFlag = flag.Float64("longitude", 0.0, "longitude for search")
 var dataFlag = flag.String("data", "", "path to data csv file")
+var historyFlag = flag.String("history", "", "path to history csv file")
 
 func mustParseInt64(value string) int64 {
 	ret, err := strconv.ParseInt(value, 10, 64)
@@ -60,6 +61,17 @@ func mustParseFloat64OrEmpty(value string) *float64 {
 	}
 	ret := mustParseFloat64(value)
 	return &ret
+}
+
+func floatToString(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func floatToStringOrEmpty(value *float64) string {
+	if value == nil {
+		return ""
+	}
+	return floatToString(*value)
 }
 
 func readGastrakCsv(path string) ([]gasData, error) {
@@ -92,6 +104,83 @@ func readGastrakCsv(path string) ([]gasData, error) {
 	}
 
 	return ret, nil
+}
+
+func filter(datas []gasData, fn func(gasData) bool) []gasData {
+	ret := []gasData{}
+	for _, data := range datas {
+		if fn(data) {
+			ret = append(ret, data)
+		}
+	}
+	return ret
+}
+
+func any(values []string, fn func(string) bool) bool {
+	for _, value := range values {
+		if fn(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func history(w http.ResponseWriter, r *http.Request) {
+	if *historyFlag == "" {
+		http.Error(w, "history not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	datas, err := readGastrakCsv(*historyFlag)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	query := r.URL.Query()
+	names, ok := query["name"]
+	if ok {
+		datas = filter(datas, func(data gasData) bool {
+			return any(names, func(name string) bool {
+				return name == data.Name
+			})
+		})
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"history.csv\"")
+
+	lines := [][]string{}
+	lines = append(lines, []string{
+		"Timestamp",
+		"Id",
+		"Name",
+		"Latitude",
+		"Longitude",
+		"RegularPrice",
+		"PremiumPrice",
+		"DieselPrice",
+	})
+
+	for _, data := range datas {
+		lines = append(lines, []string{
+			strconv.FormatInt(data.Timestamp.Unix(), 10),
+			strconv.Itoa(data.Id),
+			data.Name,
+			floatToString(data.Latitude),
+			floatToString(data.Longitude),
+			floatToStringOrEmpty(data.RegularPrice),
+			floatToStringOrEmpty(data.PremiumPrice),
+			floatToStringOrEmpty(data.DieselPrice),
+		})
+	}
+
+	writer := csv.NewWriter(w)
+	err = writer.WriteAll(lines)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +229,7 @@ func main() {
 	}
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	http.HandleFunc("/history", history)
 	http.HandleFunc("/", index)
 	http.ListenAndServe(fmt.Sprintf(":%d", *portFlag), nil)
 }
