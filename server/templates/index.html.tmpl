@@ -10,9 +10,11 @@
 <body>
     <div id="map"></div>
     <script>
-        let gastrakLat = {{.Latitude}};
-        let gastrakLong = {{.Longitude}};
-        let gastrakData = {{.Data}};
+        let gastrak = {
+            "Latitude": {{.Latitude}},
+            "Longitude": {{.Longitude}},
+            "Data": {{.Data}},
+        };
     </script>
     <script src="/static/leaflet.js"></script>
     <script src="/static/gastrak.js"></script>

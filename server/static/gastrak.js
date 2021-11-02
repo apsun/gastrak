@@ -1,7 +1,7 @@
 let map = L.map("map", {
     zoomSnap: 0,
     zoomAnimation: false,
-    center: L.latLng(gastrakLat, gastrakLong),
+    center: L.latLng(gastrak["Latitude"], gastrak["Longitude"]),
     zoom: 11,
 });
 
@@ -20,13 +20,11 @@ function getNavigationUrl(lat, long) {
     }
 }
 
-let lines = gastrakData.split('\n').filter((l) => l !== '');
-for (let line of lines) {
-    let cols = line.split(',');
-    let name = cols[2];
-    let lat = parseFloat(cols[3]);
-    let long = parseFloat(cols[4]);
-    let price = cols[5];
+for (let data of gastrak["Data"]) {
+    let name = data["Name"];
+    let lat = data["Latitude"];
+    let long = data["Longitude"];
+    let price = data["RegularPrice"]
     let url = getNavigationUrl(lat, long);
     L.marker([lat, long]).bindTooltip(
         `<a href="${url}"><b>${name}</b></a><br>\$${price}`, {

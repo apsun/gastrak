@@ -14,23 +14,23 @@ import (
 
 type gasData struct {
 	// When this data was fetched.
-	timestamp time.Time
+	Timestamp time.Time
 
 	// Unique identifier of the warehouse location.
-	id int
+	Id int
 
 	// User friendly name of the warehouse location.
-	locationName string
+	Name string
 
 	// Warehouse location latitude and longitude.
-	locationLatitude  float64
-	locationLongitude float64
+	Latitude  float64
+	Longitude float64
 
 	// Regular, premium, and diesel gas prices. nil = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
-	regularPrice *float64
-	premiumPrice *float64
-	dieselPrice  *float64
+	RegularPrice *float64
+	PremiumPrice *float64
+	DieselPrice  *float64
 }
 
 var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
@@ -57,14 +57,14 @@ func mustParseWarehouseObj(warehouseObj map[string]interface{}) gasData {
 	dieselPrice := getGasPrice(warehouseObj, "diesel")
 
 	return gasData{
-		timestamp:         time.Now(),
-		id:                int(warehouseObj["stlocID"].(float64)),
-		locationName:      warehouseObj["locationName"].(string),
-		locationLatitude:  warehouseObj["latitude"].(float64),
-		locationLongitude: warehouseObj["longitude"].(float64),
-		regularPrice:      regularPrice,
-		premiumPrice:      premiumPrice,
-		dieselPrice:       dieselPrice,
+		Timestamp:    time.Now(),
+		Id:           int(warehouseObj["stlocID"].(float64)),
+		Name:         warehouseObj["locationName"].(string),
+		Latitude:     warehouseObj["latitude"].(float64),
+		Longitude:    warehouseObj["longitude"].(float64),
+		RegularPrice: regularPrice,
+		PremiumPrice: premiumPrice,
+		DieselPrice:  dieselPrice,
 	}
 }
 
@@ -154,14 +154,14 @@ func main() {
 	lines := [][]string{}
 	for _, data := range datapoints {
 		lines = append(lines, []string{
-			strconv.FormatInt(data.timestamp.Unix(), 10),
-			strconv.Itoa(data.id),
-			data.locationName,
-			floatToString(data.locationLatitude),
-			floatToString(data.locationLongitude),
-			floatToStringOrEmpty(data.regularPrice),
-			floatToStringOrEmpty(data.premiumPrice),
-			floatToStringOrEmpty(data.dieselPrice),
+			strconv.FormatInt(data.Timestamp.Unix(), 10),
+			strconv.Itoa(data.Id),
+			data.Name,
+			floatToString(data.Latitude),
+			floatToString(data.Longitude),
+			floatToStringOrEmpty(data.RegularPrice),
+			floatToStringOrEmpty(data.PremiumPrice),
+			floatToStringOrEmpty(data.DieselPrice),
 		})
 	}
 
