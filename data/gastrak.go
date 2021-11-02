@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -35,38 +36,27 @@ type gasData struct {
 var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
 var longFlag = flag.Float64("longitude", 0.0, "longitude for search")
 
-func getGasPrice(warehouseObj map[string]interface{}, key string) (*float64, error) {
+func getGasPrice(warehouseObj map[string]interface{}, key string) *float64 {
 	priceMap := warehouseObj["gasPrices"].(map[string]interface{})
 
 	price, ok := priceMap[key]
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	priceNum, err := strconv.ParseFloat(price.(string), 64)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return &priceNum, nil
+	return &priceNum
 }
 
-func parseWarehouseObj(warehouseObj map[string]interface{}) (*gasData, error) {
-	regularPrice, err := getGasPrice(warehouseObj, "regular")
-	if err != nil {
-		return nil, err
-	}
+func mustParseWarehouseObj(warehouseObj map[string]interface{}) gasData {
+	regularPrice := getGasPrice(warehouseObj, "regular")
+	premiumPrice := getGasPrice(warehouseObj, "premium")
+	dieselPrice := getGasPrice(warehouseObj, "diesel")
 
-	premiumPrice, err := getGasPrice(warehouseObj, "premium")
-	if err != nil {
-		return nil, err
-	}
-
-	dieselPrice, err := getGasPrice(warehouseObj, "diesel")
-	if err != nil {
-		return nil, err
-	}
-
-	return &gasData{
+	return gasData{
 		timestamp:         time.Now(),
 		id:                int(warehouseObj["stlocID"].(float64)),
 		locationName:      warehouseObj["locationName"].(string),
@@ -75,17 +65,33 @@ func parseWarehouseObj(warehouseObj map[string]interface{}) (*gasData, error) {
 		regularPrice:      regularPrice,
 		premiumPrice:      premiumPrice,
 		dieselPrice:       dieselPrice,
-	}, nil
+	}
+}
+
+func parseWarehouseObj(warehouseObj map[string]interface{}) (ret gasData, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = r.(error)
+		}
+	}()
+
+	ret = mustParseWarehouseObj(warehouseObj)
+	err = nil
+	return
+}
+
+func floatToString(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 func floatToStringOrEmpty(value *float64) string {
 	if value == nil {
 		return ""
 	}
-	return strconv.FormatFloat(*value, 'f', -1, 64)
+	return floatToString(*value)
 }
 
-func getGasDataNearLocation(latitude, longitude float64) (*[]gasData, error) {
+func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 	req, err := http.NewRequest(
 		"GET",
 		"https://www.costco.com/AjaxWarehouseBrowseLookupView",
@@ -100,8 +106,8 @@ func getGasDataNearLocation(latitude, longitude float64) (*[]gasData, error) {
 	q.Add("numOfWarehouses", "50")
 	q.Add("hasGas", "true")
 	q.Add("populateWarehouseDetails", "true")
-	q.Add("latitude", floatToStringOrEmpty(&latitude))
-	q.Add("longitude", floatToStringOrEmpty(&longitude))
+	q.Add("latitude", floatToString(latitude))
+	q.Add("longitude", floatToString(longitude))
 	req.URL.RawQuery = q.Encode()
 
 	// API returns an error unless these headers are set
@@ -131,9 +137,9 @@ func getGasDataNearLocation(latitude, longitude float64) (*[]gasData, error) {
 		if err != nil {
 			return nil, err
 		}
-		ret = append(ret, *data)
+		ret = append(ret, data)
 	}
-	return &ret, nil
+	return ret, nil
 }
 
 func main() {
@@ -145,16 +151,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, data := range *datapoints {
-		fmt.Printf("%d,%d,%s,%f,%f,%s,%s,%s\n",
-			data.timestamp.Unix(),
-			data.id,
+	lines := [][]string{}
+	for _, data := range datapoints {
+		lines = append(lines, []string{
+			strconv.FormatInt(data.timestamp.Unix(), 10),
+			strconv.Itoa(data.id),
 			data.locationName,
-			data.locationLatitude,
-			data.locationLongitude,
+			floatToString(data.locationLatitude),
+			floatToString(data.locationLongitude),
 			floatToStringOrEmpty(data.regularPrice),
 			floatToStringOrEmpty(data.premiumPrice),
 			floatToStringOrEmpty(data.dieselPrice),
-		)
+		})
+	}
+
+	writer := csv.NewWriter(os.Stdout)
+	err = writer.WriteAll(lines)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
 	}
 }
