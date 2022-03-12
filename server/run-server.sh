@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -euo pipefail
 script_dir="$(dirname "$0")"
 . "${script_dir}/../env"
