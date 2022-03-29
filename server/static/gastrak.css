@@ -7,3 +7,10 @@ body {
     height: 100vh;
     width: 100vw;
 }
+
+#history {
+  z-index: 420;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-50%);
+}
