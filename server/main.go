@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -147,38 +149,50 @@ func history(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"history.csv\"")
-
-	lines := [][]string{}
-	lines = append(lines, []string{
-		"Timestamp",
-		"Id",
-		"Name",
-		"Latitude",
-		"Longitude",
-		"RegularPrice",
-		"PremiumPrice",
-		"DieselPrice",
-	})
-
-	for _, data := range datas {
-		lines = append(lines, []string{
-			strconv.FormatInt(data.Timestamp.Unix(), 10),
-			strconv.Itoa(data.Id),
-			data.Name,
-			floatToString(data.Latitude),
-			floatToString(data.Longitude),
-			floatToStringOrEmpty(data.RegularPrice),
-			floatToStringOrEmpty(data.PremiumPrice),
-			floatToStringOrEmpty(data.DieselPrice),
-		})
+	formats, ok := query["format"]
+	if !ok {
+		formats = []string{"csv"}
 	}
 
-	writer := csv.NewWriter(w)
-	err = writer.WriteAll(lines)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if len(formats) == 1 && strings.ToLower(formats[0]) == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+
+		lines := [][]string{}
+		for _, data := range datas {
+			lines = append(lines, []string{
+				strconv.FormatInt(data.Timestamp.Unix(), 10),
+				strconv.Itoa(data.Id),
+				data.Name,
+				floatToString(data.Latitude),
+				floatToString(data.Longitude),
+				floatToStringOrEmpty(data.RegularPrice),
+				floatToStringOrEmpty(data.PremiumPrice),
+				floatToStringOrEmpty(data.DieselPrice),
+			})
+		}
+
+		writer := csv.NewWriter(w)
+		err = writer.WriteAll(lines)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if len(formats) == 1 && strings.ToLower(formats[0]) == "json" {
+		w.Header().Set("Content-Type", "application/json")
+
+		jsonStr, err := json.Marshal(datas)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		_, err = w.Write(jsonStr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "unrecognized format", http.StatusBadRequest)
 		return
 	}
 }
