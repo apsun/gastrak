@@ -11,6 +11,5 @@ body {
 #history {
   z-index: 420;
   top: 50%;
-  left: 50%;
-  transform: translateX(-50%) translateY(-50%);
+  transform: translateY(-50%);
 }
