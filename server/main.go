@@ -16,10 +16,7 @@ import (
 	"time"
 )
 
-type gasData struct {
-	// When this data was fetched.
-	Timestamp time.Time
-
+type stationData struct {
 	// Unique identifier of the warehouse location.
 	Id int
 
@@ -29,6 +26,14 @@ type gasData struct {
 	// Warehouse location latitude and longitude.
 	Latitude  float64
 	Longitude float64
+}
+
+type gasData struct {
+	// When this data was fetched.
+	Timestamp time.Time
+
+	// The warehouse corresponding to this data.
+	Station *stationData
 
 	// Regular, premium, and diesel gas prices. 0 = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
@@ -78,15 +83,6 @@ func floatToStringOrEmpty(value float64) string {
 	return floatToString(value)
 }
 
-func intern(cache map[string]string, s string) string {
-	t, ok := cache[s]
-	if ok {
-		return t
-	}
-	cache[s] = s
-	return s
-}
-
 func readDataCsv(path string) ([]gasData, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -94,7 +90,7 @@ func readDataCsv(path string) ([]gasData, error) {
 	}
 	defer f.Close()
 
-	cache := map[string]string{}
+	stations := map[int]*stationData{}
 	ret := []gasData{}
 	reader := csv.NewReader(f)
 	for {
@@ -105,12 +101,24 @@ func readDataCsv(path string) ([]gasData, error) {
 			return nil, fmt.Errorf("failed to read data file: %w", err)
 		}
 
+		stationId := int(mustParseInt64(line[1]))
+		station := stations[stationId]
+		if station == nil {
+			stationName := line[2]
+			stationLat := mustParseFloat64(line[3])
+			stationLng := mustParseFloat64(line[4])
+			station = &stationData{
+				Name:      stationName,
+				Id:        stationId,
+				Latitude:  stationLat,
+				Longitude: stationLng,
+			}
+			stations[stationId] = station
+		}
+
 		ret = append(ret, gasData{
 			Timestamp:    time.Unix(mustParseInt64(line[0]), 0),
-			Id:           int(mustParseInt64(line[1])),
-			Name:         intern(cache, line[2]),
-			Latitude:     mustParseFloat64(line[3]),
-			Longitude:    mustParseFloat64(line[4]),
+			Station:      station,
 			RegularPrice: mustParseFloat64OrEmpty(line[5]),
 			PremiumPrice: mustParseFloat64OrEmpty(line[6]),
 			DieselPrice:  mustParseFloat64OrEmpty(line[7]),
@@ -179,7 +187,7 @@ func queryParam(r *http.Request, name string) string {
 func filterName(datas []gasData, name string) []gasData {
 	ret := []gasData{}
 	for _, data := range datas {
-		if strings.EqualFold(data.Name, name) {
+		if strings.EqualFold(data.Station.Name, name) {
 			ret = append(ret, data)
 		}
 	}
@@ -231,10 +239,10 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	for _, data := range datas {
 		lines = append(lines, []string{
 			strconv.FormatInt(data.Timestamp.Unix(), 10),
-			strconv.Itoa(data.Id),
-			data.Name,
-			floatToString(data.Latitude),
-			floatToString(data.Longitude),
+			strconv.Itoa(data.Station.Id),
+			data.Station.Name,
+			floatToString(data.Station.Latitude),
+			floatToString(data.Station.Longitude),
 			floatToStringOrEmpty(data.RegularPrice),
 			floatToStringOrEmpty(data.PremiumPrice),
 			floatToStringOrEmpty(data.DieselPrice),
