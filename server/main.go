@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,6 +42,7 @@ var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
 var longFlag = flag.Float64("longitude", 0.0, "longitude for search")
 var dataFlag = flag.String("data", "", "path to data csv file")
 var historyFlag = flag.String("history", "", "path to history csv file")
+var refreshFlag = flag.Duration("refresh", 60*time.Second, "how often to refresh data")
 
 func mustParseInt64(value string) int64 {
 	ret, err := strconv.ParseInt(value, 10, 64)
@@ -76,10 +79,10 @@ func floatToStringOrEmpty(value *float64) string {
 	return floatToString(*value)
 }
 
-func readGastrakCsv(path string) ([]gasData, error) {
+func readDataCsv(path string) ([]gasData, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open data file: %w", err)
 	}
 	defer f.Close()
 
@@ -90,7 +93,7 @@ func readGastrakCsv(path string) ([]gasData, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read data file: %w", err)
 		}
 
 		ret = append(ret, gasData{
@@ -106,6 +109,54 @@ func readGastrakCsv(path string) ([]gasData, error) {
 	}
 
 	return ret, nil
+}
+
+var data = struct {
+	mu        sync.RWMutex
+	updatedAt time.Time
+	current   []gasData
+	history   []gasData
+}{}
+
+func refreshOnce() error {
+	stat, err := os.Stat(*dataFlag)
+	if err != nil {
+		return fmt.Errorf("failed to stat current data: %w", err)
+	}
+	updatedAt := stat.ModTime()
+
+	current, err := readDataCsv(*dataFlag)
+	if err != nil {
+		return fmt.Errorf("failed to read current data: %w", err)
+	}
+
+	var history []gasData
+	if *historyFlag != "" {
+		history, err = readDataCsv(*historyFlag)
+		if err != nil {
+			return fmt.Errorf("failed to read history data: %w", err)
+		}
+	}
+
+	func() {
+		data.mu.Lock()
+		defer data.mu.Unlock()
+		data.updatedAt = updatedAt
+		data.current = current
+		data.history = history
+	}()
+
+	return nil
+}
+
+func refreshPeriodic() {
+	for {
+		time.Sleep(*refreshFlag)
+		err := refreshOnce()
+		if err != nil {
+			log.Printf("failed to refresh data: %v\n", err)
+		}
+	}
 }
 
 func queryParam(r *http.Request, name string) *string {
@@ -148,6 +199,12 @@ func getGradePrice(data *gasData, grade string) *float64 {
 	}
 }
 
+func internalHTTPError(w http.ResponseWriter, format string, a ...interface{}) {
+	msg := fmt.Sprintf(format, a...)
+	log.Println(msg)
+	http.Error(w, msg, http.StatusInternalServerError)
+}
+
 func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 
@@ -178,7 +235,7 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	writer := csv.NewWriter(w)
 	err := writer.WriteAll(lines)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to write response: %v", err)
 		return
 	}
 }
@@ -198,13 +255,13 @@ func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 	jsonStr, err := json.Marshal(datas)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to marshal json: %v", err)
 		return
 	}
 
 	_, err = w.Write(jsonStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to write response: %v", err)
 		return
 	}
 }
@@ -231,13 +288,13 @@ func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 	jsonStr, err := json.Marshal(points)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to marshal json: %v", err)
 		return
 	}
 
 	_, err = w.Write(jsonStr)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to write response: %v", err)
 		return
 	}
 }
@@ -252,6 +309,7 @@ func serveFormat(datas []gasData, w http.ResponseWriter, r *http.Request) {
 		serveHighcharts(datas, w, r)
 	} else {
 		http.Error(w, "unrecognized format", http.StatusBadRequest)
+		return
 	}
 }
 
@@ -261,41 +319,35 @@ func history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	datas, err := readGastrakCsv(*historyFlag)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	history := func() []gasData {
+		data.mu.RLock()
+		defer data.mu.RUnlock()
+		return data.history
+	}()
 
-	serveFormat(datas, w, r)
+	serveFormat(history, w, r)
 }
 
 func current(w http.ResponseWriter, r *http.Request) {
-	datas, err := readGastrakCsv(*dataFlag)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	current := func() []gasData {
+		data.mu.RLock()
+		defer data.mu.RUnlock()
+		return data.current
+	}()
 
-	serveFormat(datas, w, r)
+	serveFormat(current, w, r)
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
+	updatedAt, current := func() (time.Time, []gasData) {
+		data.mu.RLock()
+		defer data.mu.RUnlock()
+		return data.updatedAt, data.current
+	}()
+
 	t, err := template.ParseFiles("templates/index.html.tmpl")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	ts, err := os.Stat(*dataFlag)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data, err := readGastrakCsv(*dataFlag)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to parse template: %v", err)
 		return
 	}
 
@@ -307,13 +359,13 @@ func index(w http.ResponseWriter, r *http.Request) {
 	}{
 		Latitude:  *latFlag,
 		Longitude: *longFlag,
-		Data:      data,
-		Time:      ts.ModTime().Format("2006-01-02"),
+		Data:      current,
+		Time:      updatedAt.Format("2006-01-02"),
 	}
 
 	err = t.Execute(w, args)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalHTTPError(w, "failed to render template: %v", err)
 		return
 	}
 }
@@ -324,6 +376,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "usage: server -data=... -latitude=... -longitude=...\n")
 		os.Exit(1)
 	}
+
+	err := refreshOnce()
+	if err != nil {
+		log.Fatalf("failed to initialize data: %v\n", err)
+	}
+	go refreshPeriodic()
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/history", history)
