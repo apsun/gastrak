@@ -32,14 +32,14 @@ type gasData struct {
 
 	// Regular, premium, and diesel gas prices. nil = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
-	RegularPrice *float64
-	PremiumPrice *float64
-	DieselPrice  *float64
+	RegularPrice float64
+	PremiumPrice float64
+	DieselPrice  float64
 }
 
 var portFlag = flag.Int("port", 8000, "port to listen on")
-var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
-var longFlag = flag.Float64("longitude", 0.0, "longitude for search")
+var latFlag = flag.Float64("latitude", 0, "latitude for search")
+var longFlag = flag.Float64("longitude", 0, "longitude for search")
 var dataFlag = flag.String("data", "", "path to data csv file")
 var historyFlag = flag.String("history", "", "path to history csv file")
 var refreshFlag = flag.Duration("refresh", 60*time.Second, "how often to refresh data")
@@ -60,23 +60,22 @@ func mustParseFloat64(value string) float64 {
 	return ret
 }
 
-func mustParseFloat64OrEmpty(value string) *float64 {
+func mustParseFloat64OrEmpty(value string) float64 {
 	if value == "" {
-		return nil
+		return 0
 	}
-	ret := mustParseFloat64(value)
-	return &ret
+	return mustParseFloat64(value)
 }
 
 func floatToString(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-func floatToStringOrEmpty(value *float64) string {
-	if value == nil {
+func floatToStringOrEmpty(value float64) string {
+	if value == 0 {
 		return ""
 	}
-	return floatToString(*value)
+	return floatToString(value)
 }
 
 func readDataCsv(path string) ([]gasData, error) {
@@ -159,12 +158,12 @@ func refreshPeriodic() {
 	}
 }
 
-func queryParam(r *http.Request, name string) *string {
+func queryParam(r *http.Request, name string) string {
 	values := r.URL.Query()[name]
 	if len(values) == 0 {
-		return nil
+		return ""
 	}
-	return &values[0]
+	return values[0]
 }
 
 func filterName(datas []gasData, name string) []gasData {
@@ -180,14 +179,14 @@ func filterName(datas []gasData, name string) []gasData {
 func filterGrade(datas []gasData, grade string) []gasData {
 	ret := []gasData{}
 	for _, data := range datas {
-		if getGradePrice(&data, grade) != nil {
+		if getGradePrice(&data, grade) != 0 {
 			ret = append(ret, data)
 		}
 	}
 	return ret
 }
 
-func getGradePrice(data *gasData, grade string) *float64 {
+func getGradePrice(data *gasData, grade string) float64 {
 	if strings.EqualFold(grade, "regular") {
 		return data.RegularPrice
 	} else if strings.EqualFold(grade, "premium") {
@@ -195,7 +194,7 @@ func getGradePrice(data *gasData, grade string) *float64 {
 	} else if strings.EqualFold(grade, "diesel") {
 		return data.DieselPrice
 	} else {
-		return nil
+		return 0
 	}
 }
 
@@ -209,13 +208,13 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 
 	name := queryParam(r, "name")
-	if name != nil {
-		datas = filterName(datas, *name)
+	if name != "" {
+		datas = filterName(datas, name)
 	}
 
 	grade := queryParam(r, "grade")
-	if grade != nil {
-		datas = filterGrade(datas, *grade)
+	if grade != "" {
+		datas = filterGrade(datas, grade)
 	}
 
 	lines := [][]string{}
@@ -244,13 +243,13 @@ func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	name := queryParam(r, "name")
-	if name != nil {
-		datas = filterName(datas, *name)
+	if name != "" {
+		datas = filterName(datas, name)
 	}
 
 	grade := queryParam(r, "grade")
-	if grade != nil {
-		datas = filterGrade(datas, *grade)
+	if grade != "" {
+		datas = filterGrade(datas, grade)
 	}
 
 	jsonStr, err := json.Marshal(datas)
@@ -271,18 +270,18 @@ func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 	name := queryParam(r, "name")
 	grade := queryParam(r, "grade")
-	if name == nil || grade == nil {
+	if name == "" || grade == "" {
 		http.Error(w, "must specify `name` and `grade` parameters", http.StatusBadRequest)
 		return
 	}
 
-	datas = filterName(datas, *name)
-	datas = filterGrade(datas, *grade)
+	datas = filterName(datas, name)
+	datas = filterGrade(datas, grade)
 
 	points := [][2]float64{}
 	for _, data := range datas {
 		timestampMs := float64(data.Timestamp.Unix() * 1000)
-		price := *getGradePrice(&data, *grade)
+		price := getGradePrice(&data, grade)
 		points = append(points, [2]float64{timestampMs, price})
 	}
 
@@ -301,11 +300,11 @@ func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 func serveFormat(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	format := queryParam(r, "format")
-	if format == nil || strings.EqualFold(*format, "csv") {
+	if format == "" || strings.EqualFold(format, "csv") {
 		serveCSV(datas, w, r)
-	} else if strings.EqualFold(*format, "json") {
+	} else if strings.EqualFold(format, "json") {
 		serveJSON(datas, w, r)
-	} else if strings.EqualFold(*format, "highcharts") {
+	} else if strings.EqualFold(format, "highcharts") {
 		serveHighcharts(datas, w, r)
 	} else {
 		http.Error(w, "unrecognized format", http.StatusBadRequest)
