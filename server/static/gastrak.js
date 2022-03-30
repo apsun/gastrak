@@ -29,7 +29,7 @@ function createElement(tag, attrs, children) {
     }
     if (children) {
         for (let child of children) {
-            elem.appendChild(child);
+            elem.append(child);
         }
     }
     return elem;
@@ -40,26 +40,23 @@ async function showHistory(name, grade) {
     dialog.innerHTML = "";
 
     let resp = await fetch("/history?" + new URLSearchParams({
-        "name": name,
-        "grade": grade,
-        "format": "highcharts",
+        name: name,
+        grade: grade,
+        format: "highcharts",
     }).toString());
     let data = JSON.parse(await resp.text());
 
     Highcharts.chart(dialog, {
-        "chart": {"type": "line", "zoomType": "x"},
-        "title": {"text": `${name} (${grade})`},
-        "xAxis": {"type": "datetime"},
-        "yAxis": {
-            "labels": {"format": "${value:.2f}"},
-            "title": {"text": "Price"},
-            "min": 0
+        chart: {type: "line", zoomType: "x"},
+        title: {text: `${name} (${grade})`},
+        xAxis: {type: "datetime"},
+        yAxis: {
+            labels: {format: "${value:.2f}"},
+            title: {text: "Price"},
+            min: 0
         },
-        "legend": {"enabled": false},
-        "series": [{
-            "name": name,
-            "data": data,
-        }],
+        legend: {enabled: false},
+        series: [{name: name, data: data}],
     });
 
     dialog.show();
@@ -72,16 +69,14 @@ for (let data of gastrak["Data"]) {
     let price = data["RegularPrice"];
     let url = getNavigationUrl(lat, long);
 
+    let onclick = async () => { await showHistory(name, "regular"); };
     let tooltip = createElement("div", {}, [
-        createElement("a", {"href": url}, [
-            createElement("b", {"innerText": name})
+        createElement("a", {href: url}, [
+            createElement("b", {}, [name])
         ]),
         createElement("br"),
-        createElement("span", {"innerText": `\$${price.toString()} `}),
-        createElement("a", {
-            "onclick": async () => { await showHistory(name, "regular"); },
-            "innerText": "^",
-        }),
+        "$" + price + " ",
+        createElement("a", {onclick: onclick}, ["^"]),
     ]);
 
     L.marker([lat, long]).bindTooltip(tooltip, {
