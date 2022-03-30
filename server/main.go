@@ -148,7 +148,7 @@ func getGradePrice(data *gasData, grade string) *float64 {
 	}
 }
 
-func csvHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 
 	name := queryParam(r, "name")
@@ -183,7 +183,7 @@ func csvHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func jsonHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	name := queryParam(r, "name")
@@ -209,7 +209,7 @@ func jsonHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func highchartsHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	name := queryParam(r, "name")
@@ -242,6 +242,19 @@ func highchartsHistory(datas []gasData, w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func serveFormat(datas []gasData, w http.ResponseWriter, r *http.Request) {
+	format := queryParam(r, "format")
+	if format == nil || strings.EqualFold(*format, "csv") {
+		serveCSV(datas, w, r)
+	} else if strings.EqualFold(*format, "json") {
+		serveJSON(datas, w, r)
+	} else if strings.EqualFold(*format, "highcharts") {
+		serveHighcharts(datas, w, r)
+	} else {
+		http.Error(w, "unrecognized format", http.StatusBadRequest)
+	}
+}
+
 func history(w http.ResponseWriter, r *http.Request) {
 	if *historyFlag == "" {
 		http.Error(w, "history not available", http.StatusServiceUnavailable)
@@ -254,16 +267,17 @@ func history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	format := queryParam(r, "format")
-	if format == nil || strings.EqualFold(*format, "csv") {
-		csvHistory(datas, w, r)
-	} else if strings.EqualFold(*format, "json") {
-		jsonHistory(datas, w, r)
-	} else if strings.EqualFold(*format, "highcharts") {
-		highchartsHistory(datas, w, r)
-	} else {
-		http.Error(w, "unrecognized format", http.StatusBadRequest)
+	serveFormat(datas, w, r)
+}
+
+func current(w http.ResponseWriter, r *http.Request) {
+	datas, err := readGastrakCsv(*dataFlag)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	serveFormat(datas, w, r)
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +327,7 @@ func main() {
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/history", history)
+	http.HandleFunc("/current", current)
 	http.HandleFunc("/", index)
 	http.ListenAndServe(fmt.Sprintf(":%d", *portFlag), nil)
 }
