@@ -89,14 +89,12 @@ function showMap(lat, lng, datas) {
         L.marker([lat, lng]).bindTooltip(tooltip, {
             direction: "top",
             permanent: true,
-            offset: L.point(0, -16),
+            offset: L.point(-16, -16),
             opacity: 1,
             interactive: true,
         }).addTo(map);
     }
 }
-
-showMap(gastrak["Latitude"], gastrak["Longitude"], gastrak["Data"]);
 
 document.body.addEventListener("mousedown", (e) => {
     if (e.target.closest("dialog") === null) {
@@ -104,3 +102,5 @@ document.body.addEventListener("mousedown", (e) => {
         historyDialog.close();
     }
 });
+
+showMap(gastrak["Latitude"], gastrak["Longitude"], gastrak["Data"]);
