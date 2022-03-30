@@ -26,29 +26,29 @@ type gasData struct {
 	Latitude  float64
 	Longitude float64
 
-	// Regular, premium, and diesel gas prices. nil = no gas of this type at
+	// Regular, premium, and diesel gas prices. 0 = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
-	RegularPrice *float64
-	PremiumPrice *float64
-	DieselPrice  *float64
+	RegularPrice float64
+	PremiumPrice float64
+	DieselPrice  float64
 }
 
-var latFlag = flag.Float64("latitude", 0.0, "latitude for search")
-var longFlag = flag.Float64("longitude", 0.0, "longitude for search")
+var latFlag = flag.Float64("latitude", 0, "latitude for search")
+var longFlag = flag.Float64("longitude", 0, "longitude for search")
 
-func getGasPrice(warehouseObj map[string]interface{}, key string) *float64 {
+func getGasPrice(warehouseObj map[string]interface{}, key string) float64 {
 	priceMap := warehouseObj["gasPrices"].(map[string]interface{})
 
 	price, ok := priceMap[key]
 	if !ok {
-		return nil
+		return 0
 	}
 
 	priceNum, err := strconv.ParseFloat(price.(string), 64)
 	if err != nil {
 		panic(err)
 	}
-	return &priceNum
+	return priceNum
 }
 
 func mustParseWarehouseObj(warehouseObj map[string]interface{}) gasData {
@@ -84,11 +84,11 @@ func floatToString(value float64) string {
 	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-func floatToStringOrEmpty(value *float64) string {
-	if value == nil {
+func floatToStringOrEmpty(value float64) string {
+	if value == 0 {
 		return ""
 	}
-	return floatToString(*value)
+	return floatToString(value)
 }
 
 func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
