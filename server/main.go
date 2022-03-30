@@ -108,23 +108,138 @@ func readGastrakCsv(path string) ([]gasData, error) {
 	return ret, nil
 }
 
-func filter(datas []gasData, fn func(gasData) bool) []gasData {
+func queryParam(r *http.Request, name string) *string {
+	values := r.URL.Query()[name]
+	if len(values) == 0 {
+		return nil
+	}
+	return &values[0]
+}
+
+func filterName(datas []gasData, name string) []gasData {
 	ret := []gasData{}
 	for _, data := range datas {
-		if fn(data) {
+		if strings.EqualFold(data.Name, name) {
 			ret = append(ret, data)
 		}
 	}
 	return ret
 }
 
-func any(values []string, fn func(string) bool) bool {
-	for _, value := range values {
-		if fn(value) {
-			return true
+func filterGrade(datas []gasData, grade string) []gasData {
+	ret := []gasData{}
+	for _, data := range datas {
+		if getGradePrice(&data, grade) != nil {
+			ret = append(ret, data)
 		}
 	}
-	return false
+	return ret
+}
+
+func getGradePrice(data *gasData, grade string) *float64 {
+	if strings.EqualFold(grade, "regular") {
+		return data.RegularPrice
+	} else if strings.EqualFold(grade, "premium") {
+		return data.PremiumPrice
+	} else if strings.EqualFold(grade, "diesel") {
+		return data.DieselPrice
+	} else {
+		return nil
+	}
+}
+
+func csvHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/csv")
+
+	name := queryParam(r, "name")
+	if name != nil {
+		datas = filterName(datas, *name)
+	}
+
+	grade := queryParam(r, "grade")
+	if grade != nil {
+		datas = filterGrade(datas, *grade)
+	}
+
+	lines := [][]string{}
+	for _, data := range datas {
+		lines = append(lines, []string{
+			strconv.FormatInt(data.Timestamp.Unix(), 10),
+			strconv.Itoa(data.Id),
+			data.Name,
+			floatToString(data.Latitude),
+			floatToString(data.Longitude),
+			floatToStringOrEmpty(data.RegularPrice),
+			floatToStringOrEmpty(data.PremiumPrice),
+			floatToStringOrEmpty(data.DieselPrice),
+		})
+	}
+
+	writer := csv.NewWriter(w)
+	err := writer.WriteAll(lines)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func jsonHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	name := queryParam(r, "name")
+	if name != nil {
+		datas = filterName(datas, *name)
+	}
+
+	grade := queryParam(r, "grade")
+	if grade != nil {
+		datas = filterGrade(datas, *grade)
+	}
+
+	jsonStr, err := json.Marshal(datas)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(jsonStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func highchartsHistory(datas []gasData, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	name := queryParam(r, "name")
+	grade := queryParam(r, "grade")
+	if name == nil || grade == nil {
+		http.Error(w, "must specify `name` and `grade` parameters", http.StatusBadRequest)
+		return
+	}
+
+	datas = filterName(datas, *name)
+	datas = filterGrade(datas, *grade)
+
+	points := [][2]float64{}
+	for _, data := range datas {
+		timestampMs := float64(data.Timestamp.Unix() * 1000)
+		price := *getGradePrice(&data, *grade)
+		points = append(points, [2]float64{timestampMs, price})
+	}
+
+	jsonStr, err := json.Marshal(points)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = w.Write(jsonStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func history(w http.ResponseWriter, r *http.Request) {
@@ -139,61 +254,15 @@ func history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := r.URL.Query()
-	names, ok := query["name"]
-	if ok {
-		datas = filter(datas, func(data gasData) bool {
-			return any(names, func(name string) bool {
-				return name == data.Name
-			})
-		})
-	}
-
-	formats, ok := query["format"]
-	if !ok {
-		formats = []string{"csv"}
-	}
-
-	if len(formats) == 1 && strings.ToLower(formats[0]) == "csv" {
-		w.Header().Set("Content-Type", "text/csv")
-
-		lines := [][]string{}
-		for _, data := range datas {
-			lines = append(lines, []string{
-				strconv.FormatInt(data.Timestamp.Unix(), 10),
-				strconv.Itoa(data.Id),
-				data.Name,
-				floatToString(data.Latitude),
-				floatToString(data.Longitude),
-				floatToStringOrEmpty(data.RegularPrice),
-				floatToStringOrEmpty(data.PremiumPrice),
-				floatToStringOrEmpty(data.DieselPrice),
-			})
-		}
-
-		writer := csv.NewWriter(w)
-		err = writer.WriteAll(lines)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else if len(formats) == 1 && strings.ToLower(formats[0]) == "json" {
-		w.Header().Set("Content-Type", "application/json")
-
-		jsonStr, err := json.Marshal(datas)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		_, err = w.Write(jsonStr)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	format := queryParam(r, "format")
+	if format == nil || strings.EqualFold(*format, "csv") {
+		csvHistory(datas, w, r)
+	} else if strings.EqualFold(*format, "json") {
+		jsonHistory(datas, w, r)
+	} else if strings.EqualFold(*format, "highcharts") {
+		highchartsHistory(datas, w, r)
 	} else {
 		http.Error(w, "unrecognized format", http.StatusBadRequest)
-		return
 	}
 }
 

@@ -35,27 +35,20 @@ function createElement(tag, attrs, children) {
     return elem;
 }
 
-async function showHistory(name) {
+async function showHistory(name, grade) {
     let dialog = document.getElementById("history");
     dialog.innerHTML = "";
 
     let resp = await fetch("/history?" + new URLSearchParams({
         "name": name,
-        "format": "json"
+        "grade": grade,
+        "format": "highcharts",
     }).toString());
-    let json = JSON.parse(await resp.text());
-
-    let points = [];
-    for (let data of json) {
-        points.push([
-            Date.parse(data["Timestamp"]),
-            data["RegularPrice"]
-        ]);
-    }
+    let data = JSON.parse(await resp.text());
 
     Highcharts.chart(dialog, {
         "chart": {"type": "line", "zoomType": "x"},
-        "title": {"text": name},
+        "title": {"text": `${name} (${grade})`},
         "xAxis": {"type": "datetime"},
         "yAxis": {
             "labels": {"format": "${value:.2f}"},
@@ -65,7 +58,7 @@ async function showHistory(name) {
         "legend": {"enabled": false},
         "series": [{
             "name": name,
-            "data": points,
+            "data": data,
         }],
     });
 
@@ -86,7 +79,7 @@ for (let data of gastrak["Data"]) {
         createElement("br"),
         createElement("span", {"innerText": `\$${price.toString()} `}),
         createElement("a", {
-            "onclick": async () => { await showHistory(name); },
+            "onclick": async () => { await showHistory(name, "regular"); },
             "innerText": "^",
         }),
     ]);
