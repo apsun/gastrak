@@ -30,7 +30,7 @@ type gasData struct {
 	Latitude  float64
 	Longitude float64
 
-	// Regular, premium, and diesel gas prices. nil = no gas of this type at
+	// Regular, premium, and diesel gas prices. 0 = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
 	RegularPrice float64
 	PremiumPrice float64
@@ -371,7 +371,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if *dataFlag == "" || *latFlag == 0.0 || *longFlag == 0.0 {
+	if *dataFlag == "" || *latFlag == 0 || *longFlag == 0 {
 		fmt.Fprintf(os.Stderr, "usage: server -data=... -latitude=... -longitude=...\n")
 		os.Exit(1)
 	}
