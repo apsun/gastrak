@@ -1,24 +1,5 @@
-let map = L.map("map", {
-    zoomSnap: 0,
-    zoomAnimation: false,
-    center: L.latLng(gastrak["Latitude"], gastrak["Longitude"]),
-    zoom: 11,
-});
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 16,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-}).addTo(map);
-
-function getNavigationUrl(lat, long) {
-    if (/Android/.test(navigator.userAgent)) {
-        return `google.navigation:q=${lat},${long}`;
-    } else if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        return `https://maps.apple.com/?daddr=${lat},${long}&dirflg=d`;
-    } else {
-        return `https://www.google.com/maps/?q=@${lat},${long}`;
-    }
-}
+let mapDiv = document.getElementById("map");
+let historyDialog = document.getElementById("history");
 
 function createElement(tag, attrs, children) {
     let elem = document.createElement(tag);
@@ -35,18 +16,20 @@ function createElement(tag, attrs, children) {
     return elem;
 }
 
-async function showHistory(name, grade) {
-    let dialog = document.getElementById("history");
-    dialog.innerHTML = "";
+function getNavigationUrl(lat, lng) {
+    if (/Android/.test(navigator.userAgent)) {
+        return `google.navigation:q=${lat},${lng}`;
+    } else if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        return `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`;
+    } else {
+        return `https://www.google.com/maps/?q=@${lat},${lng}`;
+    }
+}
 
-    let resp = await fetch("/history?" + new URLSearchParams({
-        name: name,
-        grade: grade,
-        format: "highcharts",
-    }).toString());
-    let data = JSON.parse(await resp.text());
+function showHistory(name, grade, data) {
+    historyDialog.innerHTML = "";
 
-    Highcharts.chart(dialog, {
+    Highcharts.chart(historyDialog, {
         chart: {type: "line", zoomType: "x"},
         title: {text: `${name} (${grade})`},
         xAxis: {type: "datetime"},
@@ -59,38 +42,65 @@ async function showHistory(name, grade) {
         series: [{name: name, data: data}],
     });
 
-    dialog.show();
+    historyDialog.show();
 }
 
-for (let data of gastrak["Data"]) {
-    let name = data["Name"];
-    let lat = data["Latitude"];
-    let long = data["Longitude"];
-    let price = data["RegularPrice"];
-    let url = getNavigationUrl(lat, long);
+async function fetchAndShowHistory(name, grade) {
+    let resp = await fetch("/history?" + new URLSearchParams({
+        name: name,
+        grade: grade,
+        format: "highcharts",
+    }).toString());
+    let data = JSON.parse(await resp.text());
+    showHistory(name, grade, data);
+}
 
-    let onclick = async () => { await showHistory(name, "regular"); };
-    let tooltip = createElement("div", {}, [
-        createElement("a", {href: url}, [
-            createElement("b", {}, [name])
-        ]),
-        createElement("br"),
-        "$" + price + " ",
-        createElement("a", {onclick: onclick}, ["^"]),
-    ]);
+function showMap(lat, lng, datas) {
+    let map = L.map(mapDiv, {
+        zoomSnap: 0,
+        zoomAnimation: false,
+        center: L.latLng(lat, lng),
+        zoom: 11,
+    });
 
-    L.marker([lat, long]).bindTooltip(tooltip, {
-        direction: "top",
-        permanent: true,
-        offset: L.point(0, -16),
-        opacity: 1,
-        interactive: true,
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 16,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
+
+    for (let data of datas) {
+        let name = data["Name"];
+        let lat = data["Latitude"];
+        let lng = data["Longitude"];
+        let price = data["RegularPrice"];
+        let url = getNavigationUrl(lat, lng);
+        let onclick = async () => { await fetchAndShowHistory(name, "regular"); };
+
+        let tooltip = createElement("div", {}, [
+            createElement("a", {href: url}, [
+                createElement("b", {}, [name])
+            ]),
+            createElement("br"),
+            createElement("a", {onclick: onclick}, [
+                "$" + price + " "
+            ]),
+        ]);
+
+        L.marker([lat, lng]).bindTooltip(tooltip, {
+            direction: "top",
+            permanent: true,
+            offset: L.point(0, -16),
+            opacity: 1,
+            interactive: true,
+        }).addTo(map);
+    }
 }
+
+showMap(gastrak["Latitude"], gastrak["Longitude"], gastrak["Data"]);
 
 document.body.addEventListener("mousedown", (e) => {
     if (e.target.closest("dialog") === null) {
-        let dialog = document.getElementById("history");
-        dialog.close();
+        historyDialog.innerHTML = "";
+        historyDialog.close();
     }
 });
