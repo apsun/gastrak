@@ -78,6 +78,15 @@ func floatToStringOrEmpty(value float64) string {
 	return floatToString(value)
 }
 
+func intern(cache map[string]string, s string) string {
+	t, ok := cache[s]
+	if ok {
+		return t
+	}
+	cache[s] = s
+	return s
+}
+
 func readDataCsv(path string) ([]gasData, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -85,6 +94,7 @@ func readDataCsv(path string) ([]gasData, error) {
 	}
 	defer f.Close()
 
+	cache := map[string]string{}
 	ret := []gasData{}
 	reader := csv.NewReader(f)
 	for {
@@ -98,7 +108,7 @@ func readDataCsv(path string) ([]gasData, error) {
 		ret = append(ret, gasData{
 			Timestamp:    time.Unix(mustParseInt64(line[0]), 0),
 			Id:           int(mustParseInt64(line[1])),
-			Name:         line[2],
+			Name:         intern(cache, line[2]),
 			Latitude:     mustParseFloat64(line[3]),
 			Longitude:    mustParseFloat64(line[4]),
 			RegularPrice: mustParseFloat64OrEmpty(line[5]),
