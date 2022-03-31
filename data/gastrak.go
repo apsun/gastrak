@@ -34,7 +34,7 @@ type gasData struct {
 }
 
 var latFlag = flag.Float64("latitude", 0, "latitude for search")
-var longFlag = flag.Float64("longitude", 0, "longitude for search")
+var lngFlag = flag.Float64("longitude", 0, "longitude for search")
 
 func getGasPrice(warehouseObj map[string]interface{}, key string) float64 {
 	priceMap := warehouseObj["gasPrices"].(map[string]interface{})
@@ -145,7 +145,7 @@ func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 func main() {
 	flag.Parse()
 
-	datapoints, err := getGasDataNearLocation(*latFlag, *longFlag)
+	datapoints, err := getGasDataNearLocation(*latFlag, *lngFlag)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

@@ -43,7 +43,7 @@ type gasData struct {
 
 var portFlag = flag.Int("port", 8000, "port to listen on")
 var latFlag = flag.Float64("latitude", 0, "latitude for search")
-var longFlag = flag.Float64("longitude", 0, "longitude for search")
+var lngFlag = flag.Float64("longitude", 0, "longitude for search")
 var dataFlag = flag.String("data", "", "path to data csv file")
 var historyFlag = flag.String("history", "", "path to history csv file")
 var refreshFlag = flag.Duration("refresh", 60*time.Second, "how often to refresh data")
@@ -374,7 +374,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 		Time      string
 	}{
 		Latitude:  *latFlag,
-		Longitude: *longFlag,
+		Longitude: *lngFlag,
 		Data:      current,
 		Time:      updatedAt.Format("2006-01-02"),
 	}
@@ -388,7 +388,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if *dataFlag == "" || *latFlag == 0 || *longFlag == 0 {
+	if *dataFlag == "" || *latFlag == 0 || *lngFlag == 0 {
 		fmt.Fprintf(os.Stderr, "usage: server -data=... -latitude=... -longitude=...\n")
 		os.Exit(1)
 	}
