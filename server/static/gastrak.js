@@ -69,10 +69,9 @@ function showMap(lat, lng, datas) {
     }).addTo(map);
 
     for (let data of datas) {
-        let station = data["Station"]
-        let name = station["Name"];
-        let lat = station["Latitude"];
-        let lng = station["Longitude"];
+        let name = data["Name"];
+        let lat = data["Latitude"];
+        let lng = data["Longitude"];
         let price = data["RegularPrice"];
         let url = getNavigationUrl(lat, lng);
         let onclick = async () => { await fetchAndShowHistory(name, "regular"); };

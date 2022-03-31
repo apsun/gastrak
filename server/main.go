@@ -29,11 +29,10 @@ type stationData struct {
 }
 
 type gasData struct {
+	*stationData
+
 	// When this data was fetched.
 	Timestamp time.Time
-
-	// The warehouse corresponding to this data.
-	Station *stationData
 
 	// Regular, premium, and diesel gas prices. 0 = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
@@ -117,8 +116,8 @@ func readDataCsv(path string) ([]gasData, error) {
 		}
 
 		ret = append(ret, gasData{
+			stationData:  station,
 			Timestamp:    time.Unix(mustParseInt64(line[0]), 0),
-			Station:      station,
 			RegularPrice: mustParseFloat64OrEmpty(line[5]),
 			PremiumPrice: mustParseFloat64OrEmpty(line[6]),
 			DieselPrice:  mustParseFloat64OrEmpty(line[7]),
@@ -187,7 +186,7 @@ func queryParam(r *http.Request, name string) string {
 func filterName(datas []gasData, name string) []gasData {
 	ret := []gasData{}
 	for _, data := range datas {
-		if strings.EqualFold(data.Station.Name, name) {
+		if strings.EqualFold(data.stationData.Name, name) {
 			ret = append(ret, data)
 		}
 	}
@@ -239,10 +238,10 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	for _, data := range datas {
 		lines = append(lines, []string{
 			strconv.FormatInt(data.Timestamp.Unix(), 10),
-			strconv.Itoa(data.Station.Id),
-			data.Station.Name,
-			floatToString(data.Station.Latitude),
-			floatToString(data.Station.Longitude),
+			strconv.Itoa(data.stationData.Id),
+			data.stationData.Name,
+			floatToString(data.stationData.Latitude),
+			floatToString(data.stationData.Longitude),
 			floatToStringOrEmpty(data.RegularPrice),
 			floatToStringOrEmpty(data.PremiumPrice),
 			floatToStringOrEmpty(data.DieselPrice),
