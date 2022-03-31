@@ -186,7 +186,7 @@ func queryParam(r *http.Request, name string) string {
 func filterName(datas []gasData, name string) []gasData {
 	ret := []gasData{}
 	for _, data := range datas {
-		if strings.EqualFold(data.stationData.Name, name) {
+		if strings.EqualFold(data.Name, name) {
 			ret = append(ret, data)
 		}
 	}
@@ -238,10 +238,10 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	for _, data := range datas {
 		lines = append(lines, []string{
 			strconv.FormatInt(data.Timestamp.Unix(), 10),
-			strconv.Itoa(data.stationData.Id),
-			data.stationData.Name,
-			floatToString(data.stationData.Latitude),
-			floatToString(data.stationData.Longitude),
+			strconv.Itoa(data.Id),
+			data.Name,
+			floatToString(data.Latitude),
+			floatToString(data.Longitude),
 			floatToStringOrEmpty(data.RegularPrice),
 			floatToStringOrEmpty(data.PremiumPrice),
 			floatToStringOrEmpty(data.DieselPrice),
