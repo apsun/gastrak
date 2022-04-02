@@ -82,7 +82,7 @@ func floatToStringOrEmpty(value float64) string {
 	return floatToString(value)
 }
 
-func readDataCsv(path string) ([]gasData, error) {
+func readDataCSV(path string) ([]gasData, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open data file: %w", err)
@@ -141,14 +141,14 @@ func refreshOnce() error {
 	}
 	updatedAt := stat.ModTime()
 
-	current, err := readDataCsv(*dataFlag)
+	current, err := readDataCSV(*dataFlag)
 	if err != nil {
 		return fmt.Errorf("failed to read current data: %w", err)
 	}
 
 	var history []gasData
 	if *historyFlag != "" {
-		history, err = readDataCsv(*historyFlag)
+		history, err = readDataCSV(*historyFlag)
 		if err != nil {
 			return fmt.Errorf("failed to read history data: %w", err)
 		}
