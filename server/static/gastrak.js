@@ -30,13 +30,17 @@ function showHistory(name, grade, data) {
     historyDialog.innerHTML = "";
 
     Highcharts.chart(historyDialog, {
-        chart: {type: "line", zoomType: "x"},
+        chart: {
+            type: "line",
+            zoomType: "x",
+            resetZoomButton: {relativeTo: "spacingBox"},
+        },
         title: {text: `${name} (${grade})`},
         xAxis: {type: "datetime"},
         yAxis: {
             labels: {format: "${value:.2f}"},
             title: {text: "Price"},
-            min: 0
+            min: 0,
         },
         legend: {enabled: false},
         series: [{name: name, data: data}],
@@ -78,7 +82,7 @@ function showMap(lat, lng, datas) {
 
         let tooltip = createElement("div", {}, [
             createElement("a", {href: url}, [
-                createElement("b", {}, [name])
+                createElement("b", {}, [name]),
             ]),
             createElement("br"),
             createElement("a", {onclick: onclick}, [
