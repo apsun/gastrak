@@ -3,6 +3,13 @@ set -euo pipefail
 script_dir="$(dirname "$0")"
 . "${script_dir}/../env"
 
-go run "${script_dir}/gastrak.go" -latitude=${LATITUDE} -longitude=${LONGITUDE} > "${script_dir}/current.csv.new"
+rm -f "${script_dir}/current.csv.new"
+for location in "${LOCATIONS[@]}"; do
+    IFS=, read -ra latlng <<< "${location}"
+    go run "${script_dir}/gastrak.go" \
+        -latitude="${latlng[0]}" \
+        -longitude="${latlng[1]}" \
+        >> "${script_dir}/current.csv.new"
+done
 cat "${script_dir}/current.csv.new" >> "${script_dir}/history.csv"
 mv "${script_dir}/current.csv.new" "${script_dir}/current.csv"

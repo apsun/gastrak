@@ -1,5 +1,8 @@
 # Set these according to where you want the data centered around.
-# Below example data is for Bay Area, CA
-LATITUDE=37.50
-LONGITUDE=-122.04
+# Below example data is for Bay Area, CA + Seattle, WA.
+# Map will be initially centered on the first coordinate in the array.
+LOCATIONS=(
+    37.50,-122.04
+    47.57,-122.25
+)
 SERVER_PORT=8086
