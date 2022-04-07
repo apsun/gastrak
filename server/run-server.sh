@@ -6,8 +6,8 @@ script_dir="$(dirname "$0")"
 cd "${script_dir}"
 IFS=, read -ra latlng <<< "${LOCATIONS[0]}"
 go run "main.go" \
-    --latitude="${latlng[0]}" \
-    --longitude="${latlng[1]}" \
-    --data="../data/current.csv" \
-    --history="../data/history.csv" \
-    --port="${SERVER_PORT}"
+    -latitude="${latlng[0]}" \
+    -longitude="${latlng[1]}" \
+    -data="../data/current.csv" \
+    -history="../data/history.csv" \
+    -port="${SERVER_PORT}"
