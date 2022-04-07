@@ -43,6 +43,7 @@ function showHistory(name, grade, data) {
             min: 0,
         },
         legend: {enabled: false},
+        time: {useUTC: false},
         series: [{name: name, data: data}],
     });
 
@@ -106,5 +107,7 @@ document.body.addEventListener("mousedown", (e) => {
         historyDialog.close();
     }
 });
+
+document.title = "gastrak @ " + new Date(gastrak["Time"]).toLocaleDateString();
 
 showMap(gastrak["Latitude"], gastrak["Longitude"], gastrak["Data"]);

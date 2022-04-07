@@ -371,12 +371,12 @@ func index(w http.ResponseWriter, r *http.Request) {
 		Latitude  float64
 		Longitude float64
 		Data      interface{}
-		Time      string
+		Time      int64
 	}{
 		Latitude:  *latFlag,
 		Longitude: *lngFlag,
 		Data:      current,
-		Time:      updatedAt.Format("2006-01-02"),
+		Time:      updatedAt.Unix() * 1000,
 	}
 
 	err = t.Execute(w, args)

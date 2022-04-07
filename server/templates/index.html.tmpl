@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/static/leaflet.css"/>
     <link rel="stylesheet" href="/static/gastrak.css"/>
-    <title>gastrak @ {{.Time}}</title>
+    <title>gastrak</title>
 </head>
 <body>
     <div id="map"></div>
     <dialog id="history"></dialog>
     <script>
         let gastrak = {
+            "Time": {{.Time}},
             "Latitude": {{.Latitude}},
             "Longitude": {{.Longitude}},
             "Data": {{.Data}},
