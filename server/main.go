@@ -92,6 +92,8 @@ func readDataCSV(path string) ([]gasData, error) {
 	stations := map[int]*stationData{}
 	ret := []gasData{}
 	reader := csv.NewReader(f)
+	reader.FieldsPerRecord = 8
+	reader.ReuseRecord = true
 	for {
 		line, err := reader.Read()
 		if err == io.EOF {
@@ -175,34 +177,6 @@ func refreshPeriodic() {
 	}
 }
 
-func queryParam(r *http.Request, name string) string {
-	values := r.URL.Query()[name]
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
-}
-
-func filterName(datas []gasData, name string) []gasData {
-	ret := []gasData{}
-	for _, data := range datas {
-		if strings.EqualFold(data.Name, name) {
-			ret = append(ret, data)
-		}
-	}
-	return ret
-}
-
-func filterGrade(datas []gasData, grade string) []gasData {
-	ret := []gasData{}
-	for _, data := range datas {
-		if getGradePrice(&data, grade) != 0 {
-			ret = append(ret, data)
-		}
-	}
-	return ret
-}
-
 func getGradePrice(data *gasData, grade string) float64 {
 	if strings.EqualFold(grade, "regular") {
 		return data.RegularPrice
@@ -215,6 +189,38 @@ func getGradePrice(data *gasData, grade string) float64 {
 	}
 }
 
+func queryParam(r *http.Request, name string) string {
+	values := r.URL.Query()[name]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+type filter struct {
+	name  string
+	grade string
+}
+
+func newFilterFromQuery(r *http.Request) filter {
+	return filter{
+		name:  queryParam(r, "name"),
+		grade: queryParam(r, "grade"),
+	}
+}
+
+func (f *filter) match(data *gasData) bool {
+	if f.name != "" && !strings.EqualFold(data.Name, f.name) {
+		return false
+	}
+
+	if f.grade != "" && getGradePrice(data, f.grade) == 0 {
+		return false
+	}
+
+	return true
+}
+
 func internalHTTPError(w http.ResponseWriter, format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	log.Println(msg)
@@ -223,20 +229,16 @@ func internalHTTPError(w http.ResponseWriter, format string, a ...interface{}) {
 
 func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
+	filter := newFilterFromQuery(r)
 
-	name := queryParam(r, "name")
-	if name != "" {
-		datas = filterName(datas, name)
-	}
+	writer := csv.NewWriter(w)
+	for i := range datas {
+		data := &datas[i]
+		if !filter.match(data) {
+			continue
+		}
 
-	grade := queryParam(r, "grade")
-	if grade != "" {
-		datas = filterGrade(datas, grade)
-	}
-
-	lines := [][]string{}
-	for _, data := range datas {
-		lines = append(lines, []string{
+		writer.Write([]string{
 			strconv.FormatInt(data.Timestamp.Unix(), 10),
 			strconv.Itoa(data.Id),
 			data.Name,
@@ -248,8 +250,8 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writer := csv.NewWriter(w)
-	err := writer.WriteAll(lines)
+	writer.Flush()
+	err := writer.Error()
 	if err != nil {
 		internalHTTPError(w, "failed to write response: %v", err)
 		return
@@ -258,18 +260,19 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	filter := newFilterFromQuery(r)
 
-	name := queryParam(r, "name")
-	if name != "" {
-		datas = filterName(datas, name)
+	filtered := []gasData{}
+	for i := range datas {
+		data := &datas[i]
+		if !filter.match(data) {
+			continue
+		}
+
+		filtered = append(filtered, *data)
 	}
 
-	grade := queryParam(r, "grade")
-	if grade != "" {
-		datas = filterGrade(datas, grade)
-	}
-
-	jsonStr, err := json.Marshal(datas)
+	jsonStr, err := json.Marshal(filtered)
 	if err != nil {
 		internalHTTPError(w, "failed to marshal json: %v", err)
 		return
@@ -284,21 +287,21 @@ func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 
 func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
-	name := queryParam(r, "name")
-	grade := queryParam(r, "grade")
-	if name == "" || grade == "" {
+	filter := newFilterFromQuery(r)
+	if filter.name == "" || filter.grade == "" {
 		http.Error(w, "must specify `name` and `grade` parameters", http.StatusBadRequest)
 		return
 	}
 
-	datas = filterName(datas, name)
-	datas = filterGrade(datas, grade)
-
 	points := [][2]float64{}
-	for _, data := range datas {
+	for i := range datas {
+		data := &datas[i]
+		if !filter.match(data) {
+			continue
+		}
+
 		timestampMs := float64(data.Timestamp.Unix() * 1000)
-		price := getGradePrice(&data, grade)
+		price := getGradePrice(data, filter.grade)
 		points = append(points, [2]float64{timestampMs, price})
 	}
 
