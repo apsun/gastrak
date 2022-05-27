@@ -36,9 +36,9 @@ type gasData struct {
 
 	// Regular, premium, and diesel gas prices. 0 = no gas of this type at
 	// this location. Yes, I'm storing currency as a float. Bite me.
-	RegularPrice float64
-	PremiumPrice float64
-	DieselPrice  float64
+	RegularPrice float64 `json:",omitempty"`
+	PremiumPrice float64 `json:",omitempty"`
+	DieselPrice  float64 `json:",omitempty"`
 }
 
 var portFlag = flag.Int("port", 8000, "port to listen on")

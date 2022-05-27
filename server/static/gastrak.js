@@ -78,6 +78,12 @@ function showMap(lat, lng, datas) {
         let lat = data["Latitude"];
         let lng = data["Longitude"];
         let price = data["RegularPrice"];
+        if (price === undefined) {
+            price = "N/A";
+        } else {
+            price = "$" + price;
+        }
+
         let url = getNavigationUrl(lat, lng);
         let onclick = async () => { await fetchAndShowHistory(name, "regular"); };
 
@@ -86,9 +92,7 @@ function showMap(lat, lng, datas) {
                 createElement("b", {}, [name]),
             ]),
             createElement("br"),
-            createElement("a", {onclick: onclick}, [
-                "$" + price + " "
-            ]),
+            createElement("a", {onclick: onclick}, [price]),
         ]);
 
         L.marker([lat, lng]).bindTooltip(tooltip, {
