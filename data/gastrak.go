@@ -108,6 +108,7 @@ func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 	q.Add("populateWarehouseDetails", "true")
 	q.Add("latitude", floatToString(latitude))
 	q.Add("longitude", floatToString(longitude))
+	q.Add("countryCode", "US")
 	req.URL.RawQuery = q.Encode()
 
 	// API returns an error unless these headers are set
