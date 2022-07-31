@@ -2,7 +2,7 @@
 # Below example data is for Seattle, WA + Bay Area, CA.
 # Map will be initially centered on the first coordinate in the array.
 LOCATIONS=(
-    47.57,-122.25
+    47.62,-122.13
     37.50,-122.04
 )
 SERVER_PORT=8086
