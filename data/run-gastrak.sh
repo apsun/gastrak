@@ -13,6 +13,6 @@ for location in "${LOCATIONS[@]}"; do
 done
 mv -f "${script_dir}/current.csv.new" "${script_dir}/current.csv"
 
-cp -f "${script_dir}/history.csv" "${script_dir}/history.csv.new"
+[ -f "${script_dir}/history.csv" ] && cp -f "${script_dir}/history.csv" "${script_dir}/history.csv.new"
 cat "${script_dir}/current.csv" >> "${script_dir}/history.csv.new"
 mv -f "${script_dir}/history.csv.new" "${script_dir}/history.csv"
