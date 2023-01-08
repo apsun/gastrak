@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -98,7 +98,7 @@ func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create http request: %w", err)
 	}
 
 	// Query is limited to 50 results server-side
@@ -119,16 +119,17 @@ func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 	// Perform HTTP request, parse response as a JSON list
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to send http request: %w", err)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read http response: %w", err)
 	}
 	jsonBody := []interface{}{}
 	err = json.Unmarshal(body, &jsonBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse response as json: %w\n\n%s", err, body)
 	}
 
 	// First element is a boolean for some weird reason, so skip [0]
@@ -136,7 +137,7 @@ func getGasDataNearLocation(latitude, longitude float64) ([]gasData, error) {
 	for _, warehouseObj := range jsonBody[1:] {
 		data, err := parseWarehouseObj(warehouseObj.(map[string]interface{}))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse warehouse object: %w", err)
 		}
 		ret = append(ret, data)
 	}
