@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -154,6 +155,10 @@ func readDataCSVDir(root string) ([]gasData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data directory: %w", err)
 	}
+
+	sort.SliceStable(ret, func(i, j int) bool {
+		return ret[i].Timestamp.Before(ret[j].Timestamp)
+	})
 
 	return ret, nil
 }
