@@ -5,7 +5,7 @@ data_dir="${script_dir}/../data"
 tmp_path="$(mktemp)"
 out_path="${data_dir}/history/$(date +%Y)/$(date +%Y%m%d_%H%M%S.csv)"
 curr_path="${data_dir}/current.csv"
-. "${script_dir}/../env"
+. "${script_dir}/../config"
 
 for location in "${LOCATIONS[@]}"; do
     IFS=, read -ra latlng <<< "${location}"

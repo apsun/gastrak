@@ -2,7 +2,7 @@
 set -euo pipefail
 script_dir="$(realpath "$(dirname "$0")")"
 data_dir="${script_dir}/../data"
-. "${script_dir}/../env"
+. "${script_dir}/../config"
 
 cd "${script_dir}"
 IFS=, read -ra latlng <<< "${LOCATIONS[0]}"
