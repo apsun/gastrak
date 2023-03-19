@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,8 +46,8 @@ type gasData struct {
 var portFlag = flag.Int("port", 8000, "port to listen on")
 var latFlag = flag.Float64("latitude", 0, "latitude for search")
 var lngFlag = flag.Float64("longitude", 0, "longitude for search")
-var dataFlag = flag.String("data", "", "path to data csv file")
-var historyFlag = flag.String("history", "", "path to history csv file")
+var currentFlag = flag.String("current", "", "path to current data csv file")
+var historyFlag = flag.String("history", "", "path to history data directory")
 var refreshFlag = flag.Duration("refresh", 60*time.Second, "how often to refresh data")
 
 func mustParseInt64(value string) int64 {
@@ -129,6 +131,33 @@ func readDataCSV(path string) ([]gasData, error) {
 	return ret, nil
 }
 
+func readDataCSVDir(root string) ([]gasData, error) {
+	ret := []gasData{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		data, err := readDataCSV(path)
+		if err != nil {
+			return err
+		}
+
+		ret = append(ret, data...)
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	return ret, nil
+}
+
 var data = struct {
 	mu        sync.RWMutex
 	updatedAt time.Time
@@ -137,20 +166,20 @@ var data = struct {
 }{}
 
 func refreshOnce() error {
-	stat, err := os.Stat(*dataFlag)
+	stat, err := os.Stat(*currentFlag)
 	if err != nil {
 		return fmt.Errorf("failed to stat current data: %w", err)
 	}
 	updatedAt := stat.ModTime()
 
-	current, err := readDataCSV(*dataFlag)
+	current, err := readDataCSV(*currentFlag)
 	if err != nil {
 		return fmt.Errorf("failed to read current data: %w", err)
 	}
 
 	var history []gasData
 	if *historyFlag != "" {
-		history, err = readDataCSV(*historyFlag)
+		history, err = readDataCSVDir(*historyFlag)
 		if err != nil {
 			return fmt.Errorf("failed to read history data: %w", err)
 		}
@@ -391,8 +420,8 @@ func index(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	if *dataFlag == "" || *latFlag == 0 || *lngFlag == 0 {
-		fmt.Fprintf(os.Stderr, "usage: server -data=... -latitude=... -longitude=...\n")
+	if *currentFlag == "" || *latFlag == 0 || *lngFlag == 0 {
+		fmt.Fprintf(os.Stderr, "usage: server -current=... -latitude=... -longitude=...\n")
 		os.Exit(1)
 	}
 
