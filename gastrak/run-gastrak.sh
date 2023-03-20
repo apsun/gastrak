@@ -44,7 +44,6 @@ fi
 if [ -d "${data_dir}/.git" ]; then
     cd "${data_dir}"
     git add "${out_path}"
-    git add "${curr_path}"
     git commit -m "Updated at $(date "+%Y-%m-%d %H:%M:%S")"
     git push
 fi
