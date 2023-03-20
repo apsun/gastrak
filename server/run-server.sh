@@ -6,7 +6,7 @@ data_dir="${script_dir}/../data"
 
 cd "${script_dir}"
 IFS=, read -ra latlng <<< "${LOCATIONS[0]}"
-go get "github.com/mattn/go-sqlite3"
+go mod download
 go run "${script_dir}/main.go" \
     -latitude="${latlng[0]}" \
     -longitude="${latlng[1]}" \
