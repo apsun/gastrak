@@ -5,6 +5,7 @@ data_dir="${script_dir}/../data"
 tmp_path="$(mktemp)"
 out_path="${data_dir}/history/$(date +%Y)/$(date +%Y%m%d_%H%M%S.csv)"
 curr_path="${data_dir}/current.csv"
+hist_path="${data_dir}/history.db"
 . "${script_dir}/../config"
 
 for location in "${LOCATIONS[@]}"; do
@@ -18,6 +19,27 @@ done
 mkdir -p "$(dirname "${out_path}")"
 mv -f "${tmp_path}" "${out_path}"
 ln -sfr "${out_path}" "${curr_path}"
+
+if [ ! -f "${hist_path}" ]; then
+    sqlite3 "${hist_path}" <<EOF
+CREATE TABLE data(
+    time INTEGER NOT NULL,
+    id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    regular_price TEXT NOT NULL,
+    premium_price TEXT NOT NULL,
+    diesel_price TEXT NOT NULL
+);
+CREATE INDEX ix_name ON data(name);
+EOF
+
+    find "${data_dir}/history" -type f -exec cat {} \; \
+        | sqlite3 "${hist_path}" ".import --csv '|cat -' data"
+else
+    sqlite3 "${hist_path}" ".import --csv '|cat -' data" < "${curr_path}"
+fi
 
 if [ -d "${data_dir}/.git" ]; then
     cd "${data_dir}"

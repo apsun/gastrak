@@ -1,22 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type stationData struct {
@@ -48,8 +47,9 @@ var portFlag = flag.Int("port", 8000, "port to listen on")
 var latFlag = flag.Float64("latitude", 0, "latitude for search")
 var lngFlag = flag.Float64("longitude", 0, "longitude for search")
 var currentFlag = flag.String("current", "", "path to current data csv file")
-var historyFlag = flag.String("history", "", "path to history data directory")
-var refreshFlag = flag.Duration("refresh", 60*time.Second, "how often to refresh data")
+var historyFlag = flag.String("history", "", "path to history sqlite db file")
+
+var historyDB *sql.DB
 
 func mustParseInt64(value string) int64 {
 	ret, err := strconv.ParseInt(value, 10, 64)
@@ -132,83 +132,63 @@ func readDataCSV(path string) ([]gasData, error) {
 	return ret, nil
 }
 
-func readDataCSVDir(root string) ([]gasData, error) {
-	ret := []gasData{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		data, err := readDataCSV(path)
-		if err != nil {
-			return err
-		}
-
-		ret = append(ret, data...)
-		return nil
-	})
-
+func readDataSQL(db *sql.DB, query string, args ...interface{}) ([]gasData, error) {
+	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read data directory: %w", err)
+		return nil, fmt.Errorf("failed to query db: %w", err)
 	}
+	defer rows.Close()
 
-	sort.SliceStable(ret, func(i, j int) bool {
-		return ret[i].Timestamp.Before(ret[j].Timestamp)
-	})
+	stations := map[int]*stationData{}
+	ret := []gasData{}
+	for rows.Next() {
+		var ts int64
+		var stationId int
+		var stationName string
+		var stationLat float64
+		var stationLng float64
+		var regularPrice string
+		var premiumPrice string
+		var dieselPrice string
+		err := rows.Scan(
+			&ts,
+			&stationId,
+			&stationName,
+			&stationLat,
+			&stationLng,
+			&regularPrice,
+			&premiumPrice,
+			&dieselPrice,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		station := stations[stationId]
+		if station == nil {
+			station = &stationData{
+				Name:      stationName,
+				Id:        stationId,
+				Latitude:  stationLat,
+				Longitude: stationLng,
+			}
+			stations[stationId] = station
+		}
+
+		ret = append(ret, gasData{
+			stationData:  station,
+			Timestamp:    time.Unix(ts, 0),
+			RegularPrice: mustParseFloat64OrEmpty(regularPrice),
+			PremiumPrice: mustParseFloat64OrEmpty(premiumPrice),
+			DieselPrice:  mustParseFloat64OrEmpty(dieselPrice),
+		})
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare row: %w", err)
+	}
 
 	return ret, nil
-}
-
-var data = struct {
-	mu        sync.RWMutex
-	updatedAt time.Time
-	current   []gasData
-	history   []gasData
-}{}
-
-func refreshOnce() error {
-	stat, err := os.Stat(*currentFlag)
-	if err != nil {
-		return fmt.Errorf("failed to stat current data: %w", err)
-	}
-	updatedAt := stat.ModTime()
-
-	current, err := readDataCSV(*currentFlag)
-	if err != nil {
-		return fmt.Errorf("failed to read current data: %w", err)
-	}
-
-	var history []gasData
-	if *historyFlag != "" {
-		history, err = readDataCSVDir(*historyFlag)
-		if err != nil {
-			return fmt.Errorf("failed to read history data: %w", err)
-		}
-	}
-
-	func() {
-		data.mu.Lock()
-		defer data.mu.Unlock()
-		data.updatedAt = updatedAt
-		data.current = current
-		data.history = history
-	}()
-
-	return nil
-}
-
-func refreshPeriodic() {
-	for {
-		time.Sleep(*refreshFlag)
-		err := refreshOnce()
-		if err != nil {
-			log.Printf("failed to refresh data: %v\n", err)
-		}
-	}
 }
 
 func getGradePrice(data *gasData, grade string) float64 {
@@ -223,7 +203,12 @@ func getGradePrice(data *gasData, grade string) float64 {
 	}
 }
 
-func queryParam(r *http.Request, name string) string {
+type query struct {
+	name  string
+	grade string
+}
+
+func getHTTPQueryParam(r *http.Request, name string) string {
 	values := r.URL.Query()[name]
 	if len(values) == 0 {
 		return ""
@@ -231,28 +216,34 @@ func queryParam(r *http.Request, name string) string {
 	return values[0]
 }
 
-type filter struct {
-	name  string
-	grade string
-}
-
-func newFilterFromQuery(r *http.Request) filter {
-	return filter{
-		name:  queryParam(r, "name"),
-		grade: queryParam(r, "grade"),
+func queryFromHTTPRequest(r *http.Request) query {
+	return query{
+		name:  getHTTPQueryParam(r, "name"),
+		grade: getHTTPQueryParam(r, "grade"),
 	}
 }
 
-func (f *filter) match(data *gasData) bool {
-	if f.name != "" && !strings.EqualFold(data.Name, f.name) {
-		return false
+func queryToSQL(q query) (string, []interface{}) {
+	qs := "SELECT * FROM data WHERE 1=1"
+	args := []interface{}{}
+
+	if q.name != "" {
+		qs += " AND name = ?"
+		args = append(args, q.name)
 	}
 
-	if f.grade != "" && getGradePrice(data, f.grade) == 0 {
-		return false
+	if q.grade != "" {
+		if strings.EqualFold(q.grade, "regular") {
+			qs += " AND regular_price != ''"
+		} else if strings.EqualFold(q.grade, "premium") {
+			qs += " AND premium_price != ''"
+		} else if strings.EqualFold(q.grade, "diesel") {
+			qs += " AND diesel_price != ''"
+		}
 	}
 
-	return true
+	qs += " ORDER BY time"
+	return qs, args
 }
 
 func internalHTTPError(w http.ResponseWriter, format string, a ...interface{}) {
@@ -261,17 +252,20 @@ func internalHTTPError(w http.ResponseWriter, format string, a ...interface{}) {
 	http.Error(w, msg, http.StatusInternalServerError)
 }
 
-func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveCSV(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
-	filter := newFilterFromQuery(r)
+	q := queryFromHTTPRequest(r)
+
+	sq, args := queryToSQL(q)
+	datas, err := readDataSQL(db, sq, args...)
+	if err != nil {
+		internalHTTPError(w, "failed to query data: %v", err)
+		return
+	}
 
 	writer := csv.NewWriter(w)
 	for i := range datas {
 		data := &datas[i]
-		if !filter.match(data) {
-			continue
-		}
-
 		writer.Write([]string{
 			strconv.FormatInt(data.Timestamp.Unix(), 10),
 			strconv.Itoa(data.Id),
@@ -285,28 +279,25 @@ func serveCSV(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	}
 
 	writer.Flush()
-	err := writer.Error()
+	err = writer.Error()
 	if err != nil {
 		internalHTTPError(w, "failed to write response: %v", err)
 		return
 	}
 }
 
-func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveJSON(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	filter := newFilterFromQuery(r)
+	q := queryFromHTTPRequest(r)
 
-	filtered := []gasData{}
-	for i := range datas {
-		data := &datas[i]
-		if !filter.match(data) {
-			continue
-		}
-
-		filtered = append(filtered, *data)
+	sq, args := queryToSQL(q)
+	datas, err := readDataSQL(db, sq, args...)
+	if err != nil {
+		internalHTTPError(w, "failed to query data: %v", err)
+		return
 	}
 
-	jsonStr, err := json.Marshal(filtered)
+	jsonStr, err := json.Marshal(datas)
 	if err != nil {
 		internalHTTPError(w, "failed to marshal json: %v", err)
 		return
@@ -319,23 +310,26 @@ func serveJSON(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
+func serveHighcharts(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	filter := newFilterFromQuery(r)
-	if filter.name == "" || filter.grade == "" {
+	q := queryFromHTTPRequest(r)
+	if q.name == "" || q.grade == "" {
 		http.Error(w, "must specify `name` and `grade` parameters", http.StatusBadRequest)
+		return
+	}
+
+	sq, args := queryToSQL(q)
+	datas, err := readDataSQL(db, sq, args...)
+	if err != nil {
+		internalHTTPError(w, "failed to query data: %v", err)
 		return
 	}
 
 	points := [][2]float64{}
 	for i := range datas {
 		data := &datas[i]
-		if !filter.match(data) {
-			continue
-		}
-
 		timestampMs := float64(data.Timestamp.Unix() * 1000)
-		price := getGradePrice(data, filter.grade)
+		price := getGradePrice(data, q.grade)
 		points = append(points, [2]float64{timestampMs, price})
 	}
 
@@ -352,51 +346,37 @@ func serveHighcharts(datas []gasData, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func serveFormat(datas []gasData, w http.ResponseWriter, r *http.Request) {
-	format := queryParam(r, "format")
+func history(w http.ResponseWriter, r *http.Request) {
+	if historyDB == nil {
+		http.Error(w, "history not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	format := getHTTPQueryParam(r, "format")
 	if format == "" || strings.EqualFold(format, "csv") {
-		serveCSV(datas, w, r)
+		serveCSV(historyDB, w, r)
 	} else if strings.EqualFold(format, "json") {
-		serveJSON(datas, w, r)
+		serveJSON(historyDB, w, r)
 	} else if strings.EqualFold(format, "highcharts") {
-		serveHighcharts(datas, w, r)
+		serveHighcharts(historyDB, w, r)
 	} else {
 		http.Error(w, "unrecognized format", http.StatusBadRequest)
 		return
 	}
 }
 
-func history(w http.ResponseWriter, r *http.Request) {
-	if *historyFlag == "" {
-		http.Error(w, "history not available", http.StatusServiceUnavailable)
+func index(w http.ResponseWriter, r *http.Request) {
+	stat, err := os.Stat(*currentFlag)
+	if err != nil {
+		internalHTTPError(w, "failed to stat current data: %v", err)
 		return
 	}
 
-	history := func() []gasData {
-		data.mu.RLock()
-		defer data.mu.RUnlock()
-		return data.history
-	}()
-
-	serveFormat(history, w, r)
-}
-
-func current(w http.ResponseWriter, r *http.Request) {
-	current := func() []gasData {
-		data.mu.RLock()
-		defer data.mu.RUnlock()
-		return data.current
-	}()
-
-	serveFormat(current, w, r)
-}
-
-func index(w http.ResponseWriter, r *http.Request) {
-	updatedAt, current := func() (time.Time, []gasData) {
-		data.mu.RLock()
-		defer data.mu.RUnlock()
-		return data.updatedAt, data.current
-	}()
+	data, err := readDataCSV(*currentFlag)
+	if err != nil {
+		internalHTTPError(w, "failed to read current data: %v", err)
+		return
+	}
 
 	t, err := template.ParseFiles("templates/index.html.tmpl")
 	if err != nil {
@@ -412,8 +392,8 @@ func index(w http.ResponseWriter, r *http.Request) {
 	}{
 		Latitude:  *latFlag,
 		Longitude: *lngFlag,
-		Data:      current,
-		Time:      updatedAt.Unix() * 1000,
+		Data:      data,
+		Time:      stat.ModTime().Unix() * 1000,
 	}
 
 	err = t.Execute(w, args)
@@ -430,15 +410,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := refreshOnce()
-	if err != nil {
-		log.Fatalf("failed to initialize data: %v\n", err)
+	if *historyFlag != "" {
+		db, err := sql.Open("sqlite3", *historyFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to open history db: %v\n", err)
+			os.Exit(1)
+		}
+		historyDB = db
 	}
-	go refreshPeriodic()
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/history", history)
-	http.HandleFunc("/current", current)
 	http.HandleFunc("/", index)
 	http.ListenAndServe(fmt.Sprintf(":%d", *portFlag), nil)
 }
