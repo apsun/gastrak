@@ -17,7 +17,7 @@ done
 
 mkdir -p "$(dirname "${out_path}")"
 mv -f "${tmp_path}" "${out_path}"
-ln -sf "${out_path}" "${curr_path}"
+ln -sfr "${out_path}" "${curr_path}"
 
 if [ -d "${data_dir}/.git" ]; then
     cd "${data_dir}"
