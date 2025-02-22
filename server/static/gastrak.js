@@ -29,23 +29,34 @@ function getNavigationUrl(lat, lng) {
 function showHistory(name, grade, data) {
     historyDialog.innerHTML = "";
 
-    Highcharts.chart(historyDialog, {
-        chart: {
-            type: "line",
-            zoomType: "x",
-            resetZoomButton: {relativeTo: "spacingBox"},
-        },
-        title: {text: `${name} (${grade})`},
-        xAxis: {type: "datetime"},
-        yAxis: {
-            labels: {format: "${value:.2f}"},
-            title: {text: "Price"},
-            min: 0,
-        },
-        legend: {enabled: false},
-        time: {useUTC: false},
-        series: [{name: name, data: data}],
-    });
+    let plot = new uPlot({
+        title: `${name} (${grade})`,
+        width: document.documentElement.clientWidth * 0.8,
+        height: document.documentElement.clientHeight * 0.6,
+        series: [
+            {},
+            {
+                label: "Price",
+                stroke: "blue",
+                value: (u, v) => `\$${v}`,
+            },
+        ],
+        axes: [
+            {},
+            {
+                values: (u, vs) => vs.map(v => `\$${v}`),
+            },
+        ],
+    }, data, historyDialog);
+    historyDialog.plot = plot;
+
+    historyDialog.resizeListener = () => {
+        plot.setSize({
+            width: document.documentElement.clientWidth * 0.8,
+            height: document.documentElement.clientHeight * 0.6,
+        });
+    };
+    window.addEventListener("resize", historyDialog.resizeListener);
 
     historyDialog.show();
 }
@@ -54,7 +65,7 @@ async function fetchAndShowHistory(name, grade) {
     let resp = await fetch("/history?" + new URLSearchParams({
         name: name,
         grade: grade,
-        format: "highcharts",
+        format: "timeseries-transposed",
     }).toString());
     let data = JSON.parse(await resp.text());
     showHistory(name, grade, data);
@@ -107,6 +118,14 @@ function showMap(lat, lng, datas) {
 
 document.body.addEventListener("mousedown", (e) => {
     if (e.target.closest("dialog") === null) {
+        if (historyDialog.resizeListener) {
+            window.removeEventListener("resize", historyDialog.resizeListener);
+            delete historyDialog.resizeListener;
+        }
+        if (historyDialog.plot) {
+            historyDialog.plot.destroy();
+            delete historyDialog.plot;
+        }
         historyDialog.innerHTML = "";
         historyDialog.close();
     }

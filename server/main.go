@@ -310,7 +310,7 @@ func serveJSON(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func serveHighcharts(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+func serveTimeseries(db *sql.DB, w http.ResponseWriter, r *http.Request, transpose bool) {
 	w.Header().Set("Content-Type", "application/json")
 	q := queryFromHTTPRequest(r)
 	if q.name == "" || q.grade == "" {
@@ -325,15 +325,29 @@ func serveHighcharts(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	points := [][2]float64{}
-	for i := range datas {
-		data := &datas[i]
-		timestampMs := float64(data.Timestamp.Unix() * 1000)
-		price := getGradePrice(data, q.grade)
-		points = append(points, [2]float64{timestampMs, price})
+	var pointsIf interface{}
+	if transpose {
+		points := [2][]float64{}
+		for i := range datas {
+			data := &datas[i]
+			timestamp := float64(data.Timestamp.Unix())
+			price := getGradePrice(data, q.grade)
+			points[0] = append(points[0], timestamp)
+			points[1] = append(points[1], price)
+		}
+		pointsIf = points
+	} else {
+		points := [][2]float64{}
+		for i := range datas {
+			data := &datas[i]
+			timestamp := float64(data.Timestamp.Unix())
+			price := getGradePrice(data, q.grade)
+			points = append(points, [2]float64{timestamp, price})
+		}
+		pointsIf = points
 	}
 
-	jsonStr, err := json.Marshal(points)
+	jsonStr, err := json.Marshal(pointsIf)
 	if err != nil {
 		internalHTTPError(w, "failed to marshal json: %v", err)
 		return
@@ -357,8 +371,10 @@ func history(w http.ResponseWriter, r *http.Request) {
 		serveCSV(historyDB, w, r)
 	} else if strings.EqualFold(format, "json") {
 		serveJSON(historyDB, w, r)
-	} else if strings.EqualFold(format, "highcharts") {
-		serveHighcharts(historyDB, w, r)
+	} else if strings.EqualFold(format, "timeseries") {
+		serveTimeseries(historyDB, w, r, false)
+	} else if strings.EqualFold(format, "timeseries-transposed") {
+		serveTimeseries(historyDB, w, r, true)
 	} else {
 		http.Error(w, "unrecognized format", http.StatusBadRequest)
 		return
