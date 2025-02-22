@@ -10,6 +10,7 @@ hist_path="${data_dir}/history.db"
 
 for location in "${LOCATIONS[@]}"; do
     IFS=, read -ra latlng <<< "${location}"
+    echo >&2 "Fetching data for (${latlng[0]}, ${latlng[1]})"
     go run "${script_dir}/main.go" \
         -latitude="${latlng[0]}" \
         -longitude="${latlng[1]}" \
@@ -21,6 +22,8 @@ mv -f "${tmp_path}" "${out_path}"
 ln -sfr "${out_path}" "${curr_path}"
 
 if [ ! -f "${hist_path}" ]; then
+    echo >&2 "Initializing history.db from csv; this may take a while"
+
     sqlite3 "${hist_path}" <<EOF
 CREATE TABLE data(
     time INTEGER NOT NULL,
